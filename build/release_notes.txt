@@ -1,4 +1,4 @@
 easy-pika-cli v0.4.0
 
-新功能：纯 CLI 中转（relay）、离线上传、Telegram 机器人、Aria2 后端、AI HTTP API、Docker 部署。
-详见 README.zh-CN.md / README.en.md
+功能：CLI 网盘下载与离线下载同步、图形界面、Telegram 机器人、Aria2 后端、HTTP API、Docker 部署。
+See README.md (English) · README.zh-CN.md (中文)

@@ -6,6 +6,8 @@ import json
 import logging
 from typing import Any, Callable, Optional
 
+from starlette.requests import Request
+
 from .aria2 import Aria2Client
 from .config import AppConfig
 from .magnets import extract_links
@@ -31,7 +33,7 @@ def _json_response(data: Any, status: int = 200):
 
 def create_app(config: Optional[AppConfig] = None):
     try:
-        from fastapi import Depends, FastAPI, Header, HTTPException, Request
+        from fastapi import Depends, FastAPI, Header, HTTPException
     except ImportError as exc:
         raise ImportError(
             "AI API server requires fastapi and uvicorn. "
