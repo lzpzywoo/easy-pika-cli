@@ -1,0 +1,4 @@
+PikPak Download
+
+解压后运行 PikPakDownload.exe 或「启动 PikPak Download.bat」。
+会话保存在 %USERPROFILE%\.pikpak-downloader\
