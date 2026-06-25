@@ -1,4 +1,4 @@
-# PikPak Download
+# easy-pika-cli
 
 PikPak 网盘下载（GUI / CLI）。
 
@@ -11,5 +11,5 @@ python main.py gui
 powershell -ExecutionPolicy Bypass -File scripts\build_release.ps1
 ```
 
-会话：`%USERPROFILE%\.pikpak-downloader\session.json`  
+会话：`%USERPROFILE%\.easy-pika-cli\session.json`  
 断点：`{保存目录}/{文件名}.parts/`

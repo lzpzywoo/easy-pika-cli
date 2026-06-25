@@ -9,4 +9,4 @@ build/pikpak_gui/
 *.zip
 .env
 .session.json
-.pikpak-downloader/
+.easy-pika-cli/

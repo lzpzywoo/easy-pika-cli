@@ -17,7 +17,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-$repo = "PikPak-Download"
+$repo = "easy-pika-cli"
 if (git remote get-url origin 2>$null) {
     Write-Host "Remote origin exists, pushing..."
     git push -u origin main

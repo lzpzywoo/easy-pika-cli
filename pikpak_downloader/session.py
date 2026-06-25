@@ -7,7 +7,7 @@ from pikpakapi import PikPakApi
 
 from .api_helpers import apply_client_defaults
 
-DEFAULT_SESSION_PATH = Path.home() / ".pikpak-downloader" / "session.json"
+DEFAULT_SESSION_PATH = Path.home() / ".easy-pika-cli" / "session.json"
 
 
 def disk_free_gb(path: Path) -> float | None:

@@ -190,11 +190,11 @@ async def cmd_quota(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="PikPak 网盘下载工具 — 账号密码登录、浏览文件、多线程下载",
+        description="easy-pika-cli — PikPak 网盘下载（账号登录、浏览文件、多线程下载）",
     )
     parser.add_argument(
         "--session",
-        help=f"会话文件路径（默认: ~/.pikpak-downloader/session.json）",
+        help="会话文件路径（默认: ~/.easy-pika-cli/session.json）",
     )
 
     sub = parser.add_subparsers(dest="command", required=True)

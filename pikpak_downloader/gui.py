@@ -1,4 +1,4 @@
-"""PikPak Download — desktop GUI (CustomTkinter)."""
+"""easy-pika-cli — desktop GUI (CustomTkinter)."""
 
 from __future__ import annotations
 
@@ -118,7 +118,7 @@ class PikPakGui:
         ctk.set_default_color_theme("dark-blue")
 
         self.root = ctk.CTk()
-        self.root.title("PikPak Download")
+        self.root.title("easy-pika-cli")
         self.root.minsize(1000, 640)
         self.root.geometry("1200x820")
         self.root.configure(fg_color=BG)
@@ -204,11 +204,8 @@ class PikPakGui:
         side.grid(row=0, column=0, sticky="nsew")
         side.grid_propagate(False)
 
-        ctk.CTkLabel(side, text="PikPak", font=FONT_TITLE, text_color=ACCENT, anchor="w").pack(
-            fill="x", padx=20, pady=(22, 0),
-        )
-        ctk.CTkLabel(side, text="Download", font=FONT_SM, text_color=TEXT_MUTED, anchor="w").pack(
-            fill="x", padx=20, pady=(0, 12),
+        ctk.CTkLabel(side, text="easy-pika-cli", font=FONT_TITLE, text_color=ACCENT, anchor="w").pack(
+            fill="x", padx=20, pady=(22, 12),
         )
         ctk.CTkFrame(side, height=1, fg_color=BORDER).pack(fill="x", padx=16, pady=8)
 
@@ -460,7 +457,7 @@ class PikPakGui:
 
     def _build_detailed_log_text(self) -> str:
         lines = [
-            "PikPak Download 详细日志",
+            "easy-pika-cli 详细日志",
             f"导出时间: {time.strftime('%Y-%m-%d %H:%M:%S')}",
             "",
             "=== 环境 ===",

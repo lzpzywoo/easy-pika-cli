@@ -1,15 +1,15 @@
-# Build Windows release zip for PikPak Download
+# Build Windows release zip for easy-pika-cli
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $Root
 
 $Version = (py -3 -c "from pikpak_downloader import __version__; print(__version__)").Trim()
-$OutName = "PikPakDownload-v$Version-windows-x64"
+$OutName = "easy-pika-cli-v$Version-windows-x64"
 $DistDir = Join-Path $Root "dist\$OutName"
 $ZipPath = Join-Path $Root "dist\$OutName.zip"
 
-Write-Host "==> PikPak Download release build v$Version"
+Write-Host "==> easy-pika-cli release build v$Version"
 
 Write-Host "==> Installing build dependencies..."
 py -3 -m pip install -r requirements.txt pyinstaller --quiet
@@ -20,7 +20,7 @@ if (Test-Path (Join-Path $Root "build\pikpak_gui")) {
 }
 py -3 -m PyInstaller build\pikpak_gui.spec --noconfirm --distpath dist --workpath build\pikpak_gui
 
-$BuiltDir = Join-Path $Root "dist\PikPakDownload"
+$BuiltDir = Join-Path $Root "dist\easy-pika-cli"
 if (-not (Test-Path $BuiltDir)) {
     throw "Build failed: $BuiltDir not found"
 }
@@ -36,8 +36,8 @@ Copy-Item -Path "README.md" -Destination $DistDir
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-start "" "PikPakDownload.exe"
-'@ | Set-Content -Path (Join-Path $DistDir "启动 PikPak Download.bat") -Encoding UTF8
+start "" "easy-pika-cli.exe"
+'@ | Set-Content -Path (Join-Path $DistDir "启动 easy-pika-cli.bat") -Encoding UTF8
 
 Write-Host "==> Creating zip..."
 if (Test-Path $ZipPath) { Remove-Item -Force $ZipPath }
