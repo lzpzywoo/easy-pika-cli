@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -20,7 +21,12 @@ def disk_free_gb(path: Path) -> float | None:
 
 
 def get_session_path(custom: Optional[str] = None) -> Path:
-    return Path(custom) if custom else DEFAULT_SESSION_PATH
+    if custom:
+        return Path(custom)
+    env = os.environ.get("SESSION_PATH") or os.environ.get("EASY_PIKA_SESSION")
+    if env:
+        return Path(env)
+    return DEFAULT_SESSION_PATH
 
 
 def save_session(client: PikPakApi, path: Optional[str] = None) -> Path:

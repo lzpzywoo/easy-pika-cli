@@ -1,15 +1,14 @@
 # easy-pika-cli
 
-PikPak 网盘下载（GUI / CLI）。
+PikPak download / relay tool.
+
+- **中文文档:** [README.zh-CN.md](README.zh-CN.md)
+- **English:** [README.en.md](README.en.md)
 
 ```bash
 pip install -r requirements.txt
-python main.py gui
+python main.py login -u USER -p PASS
+python main.py relay run "magnet:?xt=..." -o ./downloads
 ```
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\build_release.ps1
-```
-
-会话：`%USERPROFILE%\.easy-pika-cli\session.json`  
-断点：`{保存目录}/{文件名}.parts/`
+Session: `~/.easy-pika-cli/session.json`

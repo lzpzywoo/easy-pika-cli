@@ -1,4 +1,4 @@
-easy-pika-cli
+easy-pika-cli v0.4.0
 
-解压后运行 easy-pika-cli.exe 或「启动 easy-pika-cli.bat」。
-会话保存在 %USERPROFILE%\.easy-pika-cli\
+新功能：纯 CLI 中转（relay）、离线上传、Telegram 机器人、Aria2 后端、AI HTTP API、Docker 部署。
+详见 README.zh-CN.md / README.en.md

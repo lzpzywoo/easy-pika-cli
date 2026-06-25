@@ -1,0 +1,60 @@
+services:
+  easy-pika-cli:
+    build: .
+    image: easy-pika-cli:latest
+    profiles: ["cli"]
+    env_file: .env
+    volumes:
+      - session:/data/session
+      - downloads:/data/downloads
+    environment:
+      DOWNLOAD_DIR: /data/downloads
+      SESSION_PATH: /data/session/session.json
+    command: ["quota"]
+
+  telegram-bot:
+    build: .
+    image: easy-pika-cli:latest
+    profiles: ["telegram"]
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - session:/data/session
+      - downloads:/data/downloads
+    environment:
+      DOWNLOAD_DIR: /data/downloads
+      SESSION_PATH: /data/session/session.json
+    command: ["telegram"]
+
+  ai-api:
+    build: .
+    image: easy-pika-cli:latest
+    profiles: ["ai"]
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${AI_API_PORT:-8765}:8765"
+    volumes:
+      - session:/data/session
+      - downloads:/data/downloads
+    environment:
+      DOWNLOAD_DIR: /data/downloads
+      AI_API_HOST: "0.0.0.0"
+      SESSION_PATH: /data/session/session.json
+    command: ["ai", "serve"]
+
+  aria2:
+    image: p3terx/aria2-pro:latest
+    profiles: ["telegram", "ai", "aria2"]
+    restart: unless-stopped
+    environment:
+      - RPC_SECRET=${ARIA2_RPC_SECRET:-easy_pika_secret}
+      - RPC_PORT=6800
+    volumes:
+      - downloads:/downloads
+    ports:
+      - "6800:6800"
+
+volumes:
+  session:
+  downloads:
