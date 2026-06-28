@@ -49,6 +49,14 @@ def test_parse_ai_serve(parser) -> None:
     assert args.api_key == "secret"
 
 
+def test_parse_login_with_proxy(parser) -> None:
+    args = parser.parse_args(
+        ["--proxy", "http://127.0.0.1:10809", "login", "-u", "a@b.c", "-p", "x"],
+    )
+    assert args.proxy == "http://127.0.0.1:10809"
+    assert args.username == "a@b.c"
+
+
 def test_main_gui_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "pikpak_downloader.cli.cmd_gui",

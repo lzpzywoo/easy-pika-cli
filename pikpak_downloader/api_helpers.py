@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any, Callable, Coroutine, TypeVar
 
 import httpx
@@ -24,23 +25,52 @@ _RETRYABLE_KEYWORDS = (
 )
 
 
-def get_httpx_client_args() -> dict[str, Any]:
-    return {
+_PROXY_ENV_KEYS = (
+    "PIKPAK_PROXY",
+    "HTTPS_PROXY",
+    "https_proxy",
+    "HTTP_PROXY",
+    "http_proxy",
+    "ALL_PROXY",
+    "all_proxy",
+)
+
+
+def resolve_proxy(explicit: str | None = None) -> str | None:
+    """Resolve HTTP(S) proxy URL for PikPak API requests."""
+    if explicit and explicit.strip():
+        return explicit.strip()
+    for key in _PROXY_ENV_KEYS:
+        val = os.environ.get(key, "").strip()
+        if val:
+            return val
+    return None
+
+
+def get_httpx_client_args(proxy: str | None = None) -> dict[str, Any]:
+    resolved = resolve_proxy(proxy)
+    args: dict[str, Any] = {
         "timeout": httpx.Timeout(connect=60.0, read=120.0, write=30.0, pool=60.0),
         "limits": httpx.Limits(max_connections=24, max_keepalive_connections=12),
         "transport": httpx.AsyncHTTPTransport(retries=3),
     }
+    if resolved:
+        args["proxy"] = resolved
+    else:
+        # httpx does not use Windows system proxy; trust_env only reads env vars.
+        args["trust_env"] = True
+    return args
 
 
-def get_client_kwargs() -> dict[str, Any]:
+def get_client_kwargs(proxy: str | None = None) -> dict[str, Any]:
     return {
-        "httpx_client_args": get_httpx_client_args(),
+        "httpx_client_args": get_httpx_client_args(proxy),
         "request_max_retries": 8,
         "request_initial_backoff": 2.0,
     }
 
 
-async def apply_client_defaults(client: PikPakApi) -> None:
+async def apply_client_defaults(client: PikPakApi, proxy: str | None = None) -> None:
     """Re-apply robust network settings after loading session from disk."""
     client.max_retries = 8
     client.initial_backoff = 2.0
@@ -48,7 +78,7 @@ async def apply_client_defaults(client: PikPakApi) -> None:
         await client.httpx_client.aclose()
     except Exception:
         pass
-    client.httpx_client = httpx.AsyncClient(**get_httpx_client_args())
+    client.httpx_client = httpx.AsyncClient(**get_httpx_client_args(proxy))
 
 
 def is_retryable_error(exc: BaseException) -> bool:

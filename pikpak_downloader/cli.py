@@ -14,6 +14,7 @@ from .aria2 import Aria2Client
 from .config import AppConfig
 from .download_dispatch import download_file_to_local
 from .downloader import download_from_file_info
+from .folder_download import DownloadEntry, resolve_download_targets
 from .magnets import is_magnet_or_torrent
 from .offline_service import (
     add_offline,
@@ -25,7 +26,7 @@ from .offline_service import (
 from .relay import RelayOptions, relay_download_only, relay_magnet
 from .session import load_session, save_session
 from .token_helpers import TokenManager, get_download_url_with_retry
-from .api_helpers import apply_client_defaults, get_client_kwargs, retry_api_call
+from .api_helpers import apply_client_defaults, get_client_kwargs, resolve_proxy, retry_api_call
 
 console = Console()
 
@@ -49,9 +50,12 @@ def _log(msg: str) -> None:
     console.print(msg)
 
 
-async def _load_authed_client(session: Optional[str]) -> PikPakApi:
+async def _load_authed_client(
+    session: Optional[str],
+    proxy: Optional[str] = None,
+) -> PikPakApi:
     client = load_session(session)
-    await apply_client_defaults(client)
+    await apply_client_defaults(client, proxy)
     await retry_api_call(client.refresh_access_token, label="Token 刷新")
     return client
 
@@ -79,10 +83,18 @@ def _resolve_backend(args: argparse.Namespace) -> tuple[str, Optional[Aria2Clien
 
 
 async def cmd_login(args: argparse.Namespace) -> int:
+    proxy = resolve_proxy(getattr(args, "proxy", None))
+    if proxy:
+        console.print(f"[dim]使用代理: {proxy}[/dim]")
+    else:
+        console.print(
+            "[dim]未配置代理（Python 不会自动走 V2RayN 系统代理，"
+            "请用 --proxy 或设置 PIKPAK_PROXY）[/dim]"
+        )
     client = PikPakApi(
         username=args.username,
         password=args.password,
-        **get_client_kwargs(),
+        **get_client_kwargs(proxy),
     )
     try:
         console.print("[yellow]正在登录 PikPak...[/yellow]")
@@ -101,7 +113,7 @@ async def cmd_login(args: argparse.Namespace) -> int:
 
 async def cmd_ls(args: argparse.Namespace) -> int:
     try:
-        client = await _load_authed_client(args.session)
+        client = await _load_authed_client(args.session, getattr(args, "proxy", None))
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/red]")
         return 1
@@ -142,7 +154,7 @@ async def cmd_ls(args: argparse.Namespace) -> int:
 
 async def cmd_download(args: argparse.Namespace) -> int:
     try:
-        client = await _load_authed_client(args.session)
+        client = await _load_authed_client(args.session, getattr(args, "proxy", None))
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/red]")
         return 1
@@ -152,61 +164,84 @@ async def cmd_download(args: argparse.Namespace) -> int:
 
     targets: List[str] = args.targets
     if not targets:
-        console.print("[red]请指定要下载的文件 ID 或路径[/red]")
+        console.print("[red]请指定要下载的文件 ID、路径或文件夹[/red]")
         return 1
 
     token_mgr = TokenManager(client, args.session)
     backend, aria2 = _resolve_backend(args)
     sem = asyncio.Semaphore(max(1, args.concurrent))
 
-    async def download_one(target: str) -> int:
+    all_entries: List[DownloadEntry] = []
+    for target in targets:
+        try:
+            entries = await resolve_download_targets(client, target)
+            all_entries.extend(entries)
+            if len(entries) > 1:
+                console.print(
+                    f"[dim]已展开 {target}: {len(entries)} 个文件[/dim]"
+                )
+        except ValueError as e:
+            console.print(f"[red]{e}[/red]")
+            return 1
+
+    custom_name = (
+        args.filename
+        if len(all_entries) == 1 and "/" not in all_entries[0].rel_path
+        else None
+    )
+
+    async def download_one(entry: DownloadEntry) -> int:
         async with sem:
             try:
-                console.print(f"[yellow]获取下载链接: {target}[/yellow]")
-                if target.startswith("/"):
-                    records = await client.path_to_id(target)
-                    if not records:
-                        raise ValueError(f"路径不存在: {target}")
-                    last = records[-1]
-                    if last.get("file_type") == "folder":
-                        raise ValueError(f"目标是文件夹: {target}")
-                    file_id = last["id"]
-                else:
-                    file_id = target
-
+                label = entry.rel_path
+                console.print(f"[yellow]下载: {label}[/yellow]")
                 if backend == "aria2":
                     dest = await download_file_to_local(
                         client,
-                        file_id,
+                        entry.file_id,
                         dest_dir,
                         token_mgr=token_mgr,
                         backend="aria2",
                         aria2=aria2,
                         threads=args.threads,
-                        filename=args.filename if len(targets) == 1 else None,
+                        filename=custom_name,
+                        rel_path=entry.rel_path if not custom_name else None,
                     )
                 else:
-                    file_info = await get_download_url_with_retry(client, file_id, token_mgr)
-                    dest = await download_from_file_info(
-                        file_info,
-                        dest_dir,
-                        threads=args.threads,
-                        headers=token_mgr.get_headers(),
-                        filename=args.filename if len(targets) == 1 else None,
-                    )
+                    if custom_name:
+                        file_info = await get_download_url_with_retry(
+                            client, entry.file_id, token_mgr,
+                        )
+                        dest = await download_from_file_info(
+                            file_info,
+                            dest_dir,
+                            threads=args.threads,
+                            headers=token_mgr.get_headers(),
+                            filename=custom_name,
+                        )
+                    else:
+                        dest = await download_file_to_local(
+                            client,
+                            entry.file_id,
+                            dest_dir,
+                            token_mgr=token_mgr,
+                            backend="native",
+                            threads=args.threads,
+                            rel_path=entry.rel_path,
+                        )
                 console.print(f"[green]下载完成:[/green] {dest}")
                 return 0
             except (PikpakException, ValueError, OSError, httpx.HTTPError, RuntimeError) as e:
-                console.print(f"[red]下载失败 ({target}): {e}[/red]")
+                console.print(f"[red]下载失败 ({entry.rel_path}): {e}[/red]")
                 return 1
 
-    results = await asyncio.gather(*[download_one(t) for t in targets])
+    results = await asyncio.gather(*[download_one(e) for e in all_entries])
     return 1 if sum(results) else 0
 
 
 async def cmd_quota(args: argparse.Namespace) -> int:
     try:
-        client = await _load_authed_client(args.session)
+        client = await _load_authed_client(args.session, getattr(args, "proxy", None))
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/red]")
         return 1
@@ -221,7 +256,7 @@ async def cmd_quota(args: argparse.Namespace) -> int:
 
 async def cmd_offline_add(args: argparse.Namespace) -> int:
     try:
-        client = await _load_authed_client(args.session)
+        client = await _load_authed_client(args.session, getattr(args, "proxy", None))
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/red]")
         return 1
@@ -241,7 +276,7 @@ async def cmd_offline_add(args: argparse.Namespace) -> int:
 
 async def cmd_offline_list(args: argparse.Namespace) -> int:
     try:
-        client = await _load_authed_client(args.session)
+        client = await _load_authed_client(args.session, getattr(args, "proxy", None))
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/red]")
         return 1
@@ -268,7 +303,7 @@ async def cmd_offline_list(args: argparse.Namespace) -> int:
 
 async def cmd_offline_wait(args: argparse.Namespace) -> int:
     try:
-        client = await _load_authed_client(args.session)
+        client = await _load_authed_client(args.session, getattr(args, "proxy", None))
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/red]")
         return 1
@@ -310,7 +345,7 @@ def _relay_options_from_args(args: argparse.Namespace) -> RelayOptions:
 
 async def cmd_relay_run(args: argparse.Namespace) -> int:
     try:
-        client = await _load_authed_client(args.session)
+        client = await _load_authed_client(args.session, getattr(args, "proxy", None))
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/red]")
         return 1
@@ -340,7 +375,7 @@ async def cmd_relay_upload(args: argparse.Namespace) -> int:
 
 async def cmd_relay_download(args: argparse.Namespace) -> int:
     try:
-        client = await _load_authed_client(args.session)
+        client = await _load_authed_client(args.session, getattr(args, "proxy", None))
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/red]")
         return 1
@@ -364,7 +399,7 @@ async def cmd_relay_download(args: argparse.Namespace) -> int:
 
 async def cmd_relay_cleanup(args: argparse.Namespace) -> int:
     try:
-        client = await _load_authed_client(args.session)
+        client = await _load_authed_client(args.session, getattr(args, "proxy", None))
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/red]")
         return 1
@@ -429,6 +464,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--session",
         help="会话文件路径（默认: ~/.easy-pika-cli/session.json）",
     )
+    parser.add_argument(
+        "--proxy",
+        help="HTTP 代理，如 http://127.0.0.1:10809（V2RayN HTTP 端口）；"
+        "也可用环境变量 PIKPAK_PROXY / HTTPS_PROXY",
+    )
 
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -440,7 +480,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_ls.add_argument("path", nargs="?", default="/")
     p_ls.add_argument("--limit", type=int, default=100)
 
-    p_dl = sub.add_parser("download", help="下载文件到本地")
+    p_dl = sub.add_parser("download", help="下载文件或文件夹到本地（保留目录结构）")
     p_dl.add_argument("targets", nargs="+")
     p_dl.add_argument("-o", "--output", default=".")
     p_dl.add_argument("-t", "--threads", type=int, default=12)

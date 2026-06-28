@@ -36,6 +36,7 @@ class DownloadJob:
     file_id: str
     name: str
     total_size: int = 0
+    rel_path: str | None = None
     job_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     queued_at: float = field(default_factory=time.time)
     started_at: Optional[float] = None
@@ -252,7 +253,11 @@ class DownloadOrchestrator:
             self.on_status(job.job_id, "downloading")
 
             api_size = job.total_size or int(file_info.get("size") or 0)
-            dest_path = self.dest_dir / (file_info.get("name") or job.name)
+            if job.rel_path:
+                dest_path = self.dest_dir / job.rel_path
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                dest_path = self.dest_dir / (file_info.get("name") or job.name)
             self._pause_dest[job.job_id] = dest_path
             phase_holder: dict = {"v": "download"}
             cdn_client = create_cdn_client(threads=self.threads_per_file)
@@ -393,9 +398,10 @@ class DownloadOrchestrator:
                 try:
                     dest = await download_from_file_info(
                         file_info_holder["info"],
-                        self.dest_dir,
+                        dest_path.parent,
                         threads=self.threads_per_file,
                         headers=self.token_mgr.get_headers(),
+                        filename=dest_path.name,
                         on_progress=reporter.feed,
                         quiet=True,
                         cancel_event=cancel_event,

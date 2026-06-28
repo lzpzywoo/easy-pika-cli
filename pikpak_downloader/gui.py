@@ -14,9 +14,9 @@ import customtkinter as ctk
 from pikpakapi import PikPakApi
 from pikpakapi.PikpakException import PikpakException
 
-from .api_helpers import get_client_kwargs, retry_api_call
+from .api_helpers import get_client_kwargs, resolve_proxy, retry_api_call
 from .download_manager import DownloadJob, DownloadOrchestrator
-from .downloader import MAX_HTTP_CONCURRENCY
+from .folder_download import collect_downloadable_files
 from .session import disk_free_gb, get_session_path, load_session_async, save_session
 
 BG = "#0f0f0f"
@@ -628,7 +628,18 @@ class PikPakGui:
 
     async def _do_login(self, username: str, password: str) -> None:
         try:
-            client = PikPakApi(username=username, password=password, **get_client_kwargs())
+            proxy = resolve_proxy()
+            if proxy:
+                self._log(f"使用代理: {proxy}")
+            else:
+                self._log(
+                    "未配置代理（可用环境变量 PIKPAK_PROXY，如 http://127.0.0.1:10809）"
+                )
+            client = PikPakApi(
+                username=username,
+                password=password,
+                **get_client_kwargs(proxy),
+            )
             await client.login()
             await client.refresh_access_token()
             path = save_session(client, str(self.session_path))
@@ -804,7 +815,7 @@ class PikPakGui:
             return
         sel = self.tree.selection()
         if not sel:
-            messagebox.showwarning("提示", "请先选中要下载的文件", parent=self.root)
+            messagebox.showwarning("提示", "请先选中要下载的文件或文件夹", parent=self.root)
             return
         out = self.out_var.get().strip()
         if not out:
@@ -822,19 +833,39 @@ class PikPakGui:
             )
             return
 
+        self._run_async(self._enqueue_downloads(sel))
+
+    async def _enqueue_downloads(self, sel: tuple[str, ...]) -> None:
         jobs: list[DownloadJob] = []
         for iid in sel:
             idx = self.tree.index(iid)
             if idx < 0 or idx >= len(self.browse.files):
                 continue
             item = self.browse.files[idx]
-            if is_folder(item):
-                messagebox.showwarning(
-                    "提示", f"「{item.get('name')}」是文件夹，请进入后选择文件", parent=self.root,
-                )
-                return
             fid = item.get("id", "")
-            if fid:
+            if not fid:
+                continue
+            if is_folder(item):
+                folder_name = item.get("name") or fid
+                self._log(f"扫描文件夹: {folder_name} …")
+                rows = await retry_api_call(
+                    lambda f=fid, n=folder_name: collect_downloadable_files(
+                        self.client, f, prefix=f"{n}/",
+                    ),
+                    label="文件夹扫描",
+                )
+                if not rows:
+                    self._log(f"文件夹为空: {folder_name}")
+                    continue
+                for file_id, rel_path, size in rows:
+                    jobs.append(DownloadJob(
+                        file_id=file_id,
+                        name=rel_path,
+                        rel_path=rel_path,
+                        total_size=size,
+                    ))
+                self._log(f"「{folder_name}」共 {len(rows)} 个文件")
+            else:
                 jobs.append(DownloadJob(
                     file_id=fid,
                     name=item.get("name", fid),
@@ -842,12 +873,13 @@ class PikPakGui:
                 ))
 
         if not jobs:
+            self.ui_queue.put(("error", "没有可下载的文件"))
             return
 
         try:
             orch = self._ensure_orchestrator()
         except RuntimeError as exc:
-            messagebox.showerror("错误", str(exc), parent=self.root)
+            self.ui_queue.put(("error", str(exc)))
             return
 
         for job in jobs:
@@ -860,7 +892,6 @@ class PikPakGui:
             }))
 
         orch.enqueue(jobs)
-        self._update_summary()
         c = int(self.concurrent_combo.get())
         if len(jobs) > 1 and c > 1:
             self._log(f"已加入 {len(jobs)} 个任务；同时 {c} 个会分摊带宽，大文件建议设为 1")

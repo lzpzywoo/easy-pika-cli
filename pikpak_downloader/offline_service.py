@@ -11,6 +11,7 @@ from pikpakapi import PikPakApi
 from pikpakapi.enums import DownloadStatus
 
 from .api_helpers import retry_api_call
+from .folder_download import collect_downloadable_files
 
 LogFn = Callable[[str], None]
 
@@ -154,32 +155,8 @@ async def collect_downloadable_file_ids(
     root_file_id: str,
 ) -> List[tuple[str, str]]:
     """Return list of (file_id, name) under *root_file_id* (file or folder)."""
-    info = await retry_api_call(
-        lambda: client.offline_file_info(root_file_id),
-        label="文件信息",
-    )
-    kind = info.get("kind") or ""
-    if "folder" in kind:
-        out: List[tuple[str, str]] = []
-        page_token: Optional[str] = None
-        while True:
-            result = await retry_api_call(
-                lambda pt=page_token: client.file_list(
-                    size=200, parent_id=root_file_id, next_page_token=pt,
-                ),
-                label="文件夹列表",
-            )
-            for f in result.get("files") or []:
-                if "folder" in (f.get("kind") or ""):
-                    out.extend(await collect_downloadable_file_ids(client, f["id"]))
-                else:
-                    out.append((f["id"], f.get("name", f["id"])))
-            page_token = result.get("next_page_token")
-            if not page_token:
-                break
-        return out
-
-    return [(root_file_id, info.get("name", root_file_id))]
+    rows = await collect_downloadable_files(client, root_file_id)
+    return [(fid, rel.rsplit("/", 1)[-1]) for fid, rel, _ in rows]
 
 
 async def cleanup_cloud(
